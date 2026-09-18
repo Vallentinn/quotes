@@ -1,0 +1,41 @@
+name: Обновление котировок
+
+on:
+  schedule:
+    # каждый день в 05:30 UTC (07:30 в Германии летом, 06:30 зимой) —
+    # после закрытия американских рынков предыдущего дня
+    - cron: "30 5 * * *"
+  workflow_dispatch:        # кнопка "Run workflow" для запуска вручную
+
+permissions:
+  contents: write           # разрешение коммитить в репозиторий
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Забрать репозиторий
+        uses: actions/checkout@v4
+
+      - name: Установить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установить пакеты
+        run: pip install pandas yfinance
+
+      - name: Скачать котировки
+        run: python download_quotes.py
+
+      - name: Закоммитить изменения
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add quotes/
+          if git diff --staged --quiet; then
+            echo "Изменений нет"
+          else
+            git commit -m "Котировки на $(date -u +%Y-%m-%d)"
+            git push
+          fi
