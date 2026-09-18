@@ -31,17 +31,17 @@ HISTORY = {
 }
 
 PORTFOLIO = {
-    "SXR8": ["SXR8.DE", "CSPX.L"],            # S&P 500
-    "SXRV": ["SXRV.DE", "EXXT.DE", "CNDX.L"], # Nasdaq 100
-    "XRS2": ["XRS2.DE", "ZPRR.DE", "RTWO.L"], # Russell 2000
-    "EXS1": ["EXS1.DE"],                      # DAX
-    "XDJP": ["XDJP.DE", "IS3Q.DE", "SJPA.L"], # Япония
-    "IS3N": ["IS3N.DE", "EIMI.L"],            # развивающиеся рынки
-    "4GLD": ["4GLD.DE", "EWG2.DE", "SGLN.L"], # золото
-    "EXXY": ["EXXY.DE", "CMOD.L"],            # сырьё
-    "DTLE": ["DTLE.L", "IS0E.DE"],            # US Treasuries 20+, хедж в EUR
-    "IBTM": ["IBTM.L", "IDTM.L"],             # US Treasuries 7-10, USD
-    "IEGA": ["IEGA.L", "SXRQ.DE"],            # гособлигации еврозоны (запасной вариант)
+    # итоговый состав, все бумаги проверены в Trade Republic
+    "SXR8": ["SXR8.DE", "CSPX.L"],             # IE00B5BMR087  S&P 500
+    "SXRV": ["SXRV.DE", "CNDX.L"],             # IE00B53SZB19  Nasdaq 100
+    "XRS2": ["XRS2.DE", "XRSU.L"],             # IE00BJZ2DD79  Russell 2000
+    "EXS1": ["EXS1.DE"],                       # DE0005933931  DAX
+    "XDJP": ["XDJP.DE", "XDJP.L"],             # LU0839027447  Nikkei 225
+    "IS3N": ["IS3N.DE", "EIMI.L"],             # IE00BKM4GZ66  развивающиеся рынки
+    "EGLN": ["EGLN.DE", "SGLN.L", "IGLN.L"],   # IE00B4ND3602  золото
+    "EXXY": ["EXXY.DE"],                       # DE000A0H0728  сырьё
+    "SXRC": ["SXRC.DE", "DTLA.L"],             # IE00BFM6TC58  US Treasuries 20+
+    "XUTD": ["XUTD.DE", "XUTD.L"],             # LU0429459356  US Treasuries широкие
 }
 
 START = "1990-01-01"
