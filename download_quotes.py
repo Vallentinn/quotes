@@ -44,6 +44,12 @@ PORTFOLIO = {
     "XUTD": ["XUTD.DE", "XUTD.L"],             # LU0429459356  US Treasuries широкие
 }
 
+# курсы для пересчёта стоимости позиций в евро (сколько валюты за 1 EUR)
+FX = {
+    "FX_USD": ["EURUSD=X"],
+    "FX_GBP": ["EURGBP=X"],
+}
+
 START = "1990-01-01"
 OUT_DIR = Path(__file__).parent / "quotes"
 OUT_DIR.mkdir(exist_ok=True)
@@ -79,11 +85,27 @@ def fetch(tickers):
     return None, ""
 
 
-def save(name, tickers):
+def currency_of(ticker):
+    """Валюта котировки: EUR, USD, GBp (пенсы) ... ; по суффиксу, если Yahoo не ответил"""
+    try:
+        cur = yf.Ticker(ticker).fast_info.get("currency")
+        if cur:
+            return cur
+    except Exception:
+        pass
+    return {".DE": "EUR", ".F": "EUR", ".AS": "EUR", ".PA": "EUR"}.get(ticker[-3:], "USD")
+
+
+META = []            # имя файла, использованный тикер, валюта
+
+
+def save(name, tickers, with_currency=False):
     df, used = fetch(tickers)
     if df is None:
         print(f"{name:6s} НЕ СКАЧАН — проверь тикеры {tickers}")
         return False
+    if with_currency:
+        META.append((name, used, currency_of(used)))
 
     flat = int((df["High"] == df["Low"]).sum())
     broken = int(((df["High"] < df[["Open", "Close"]].max(axis=1)) |
@@ -108,8 +130,14 @@ def main():
     for title, group in [("ИСТОРИЯ (US ETF)", HISTORY), ("ПОРТФЕЛЬ (UCITS)", PORTFOLIO)]:
         print(f"\n=== {title} ===")
         for name, tickers in group.items():
-            if not save(name, tickers):
+            if not save(name, tickers, with_currency=(group is PORTFOLIO)):
                 failed.append(name)
+    print("\n=== КУРСЫ ВАЛЮТ ===")
+    for name, tickers in FX.items():
+        if not save(name, tickers):
+            failed.append(name)
+    pd.DataFrame(META, columns=["name", "ticker", "currency"]).to_csv(OUT_DIR / "_meta.csv", index=False)
+    print("\nВалюты листингов:", ", ".join(f"{n}={c}" for n, _, c in META))
     print("\nГотово. Файлы в", OUT_DIR.resolve())
     if failed:
         print("Не скачаны:", ", ".join(failed))
