@@ -68,6 +68,10 @@ def fetch(tickers):
         if isinstance(df.columns, pd.MultiIndex):     # новые версии yfinance
             df.columns = df.columns.get_level_values(0)
         df = df[["Open", "High", "Low", "Close"]].dropna()
+        # только закрытые сессии: сегодняшний бар ещё формируется (запуск может
+        # сработать днём, пока биржи открыты), поэтому отбрасываем его
+        today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
+        df = df[df.index < today]
         if len(df) < 30:
             print(f"    {ticker}: слишком мало баров ({len(df)})")
             continue
