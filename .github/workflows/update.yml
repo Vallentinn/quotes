@@ -1,41 +1,54 @@
-name: Обновление котировок
+name: Сигнал SineTrend
+
+# Ежедневная проверка собственной стратегии. Задача создаётся только тогда,
+# когда на следующую сессию есть заявки.
 
 on:
   schedule:
-    # каждый день в 05:30 UTC (07:30 в Германии летом, 06:30 зимой) —
-    # после закрытия американских рынков предыдущего дня
-    - cron: "30 5 * * *"
-  workflow_dispatch:        # кнопка "Run workflow" для запуска вручную
+    - cron: "45 5 * * 2-6"     # вт–сб 05:45 UTC: после обновления котировок за прошлую сессию США
+  workflow_dispatch:
 
 permissions:
-  contents: write           # разрешение коммитить в репозиторий
+  contents: read
+  issues: write
 
 jobs:
-  update:
+  signal:
     runs-on: ubuntu-latest
     steps:
-      - name: Забрать репозиторий
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Установить Python
-        uses: actions/setup-python@v6
+      - name: Забрать котировки из публичного репозитория
+        run: |
+          git clone --depth 1 https://github.com/Vallentinn/quotes.git public
+          cp -r public/quotes ./quotes
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Установить пакеты
-        run: pip install pandas yfinance
+        run: pip install pandas numpy
 
-      - name: Скачать котировки
-        run: python download_quotes.py
-
-      - name: Закоммитить изменения
+      - name: Посчитать сигнал
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add quotes/
-          if git diff --staged --quiet; then
-            echo "Изменений нет"
+          {
+            echo '```'
+            python sinetrend_signal.py
+            echo '```'
+          } > signal.md
+          cat signal.md
+
+      - name: Создать задачу, если есть заявки
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if grep -q "БЕЗ ДЕЙСТВИЙ" signal.md; then
+            echo "Заявок нет — задача не создаётся"
           else
-            git commit -m "Котировки на $(date -u +%Y-%m-%d)"
-            git push
+            gh issue create \
+              --title "SineTrend: заявка на $(date -u +%Y-%m-%d)" \
+              --assignee ${{ github.repository_owner }} \
+              --body-file signal.md
           fi
