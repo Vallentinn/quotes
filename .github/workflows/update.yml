@@ -1,54 +1,47 @@
-name: Сигнал SineTrend
-
-# Ежедневная проверка собственной стратегии. Задача создаётся только тогда,
-# когда на следующую сессию есть заявки.
+name: Обновление котировок
 
 on:
   schedule:
-    - cron: "45 5 * * 2-6"     # вт–сб 05:45 UTC: после обновления котировок за прошлую сессию США
+    - cron: "17 0 * * *"     # каждый день 00:17 UTC (02:17 по Берлину летом, 01:17 зимой)
   workflow_dispatch:
 
 permissions:
-  contents: read
-  issues: write
+  contents: write
 
 jobs:
-  signal:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Забрать репозиторий
+        uses: actions/checkout@v5
 
-      - name: Забрать котировки из публичного репозитория
-        run: |
-          git clone --depth 1 https://github.com/Vallentinn/quotes.git public
-          cp -r public/quotes ./quotes
-
-      - uses: actions/setup-python@v6
+      - name: Установить Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Установить пакеты
-        run: pip install pandas numpy
+        run: pip install pandas yfinance
 
-      - name: Посчитать сигнал
-        run: |
-          {
-            echo '```'
-            python sinetrend_signal.py
-            echo '```'
-          } > signal.md
-          cat signal.md
+      - name: Скачать котировки
+        run: python download_quotes.py
 
-      - name: Создать задачу, если есть заявки
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Закоммитить изменения
         run: |
-          if grep -q "БЕЗ ДЕЙСТВИЙ" signal.md; then
-            echo "Заявок нет — задача не создаётся"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add quotes/
+          if git diff --staged --quiet; then
+            echo "Изменений нет"
           else
-            gh issue create \
-              --title "SineTrend: заявка на $(date -u +%Y-%m-%d)" \
-              --assignee ${{ github.repository_owner }} \
-              --body-file signal.md
+            git commit -m "Котировки на $(date -u +%Y-%m-%d)"
+            git push
           fi
+
+      - name: Уведомить приватный репозиторий
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_TOKEN }}
+        run: |
+          gh api repos/Vallentinn/portfolio/dispatches \
+            --field event_type=quotes-updated
+        continue-on-error: true   # если токена нет — просто пропускаем
