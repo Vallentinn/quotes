@@ -81,8 +81,45 @@ def fetch(tickers):
         if len(df) < 30:
             print(f"    {ticker}: слишком мало баров ({len(df)})")
             continue
-        return df, ticker
+        return patch_recent(df, ticker), ticker
     return None, ""
+
+
+def stooq_symbol(ticker):
+    """SXR8.DE -> sxr8.de, SGLN.L -> sgln.uk; для остальных запасного источника нет"""
+    t = ticker.lower()
+    if t.endswith(".de"):
+        return t
+    if t.endswith(".l"):
+        return t[:-2] + ".uk"
+    return None
+
+
+def patch_recent(df, ticker):
+    """Если Yahoo отстаёт, дописывает недостающие последние бары со Stooq.
+    Берутся только даты новее последней у Yahoo, с проверкой масштаба цены."""
+    sym = stooq_symbol(ticker)
+    if sym is None:
+        return df
+    expected = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None) - pd.offsets.BDay(1)
+    if df.index[-1] >= expected:
+        return df
+    try:
+        st = pd.read_csv(f"https://stooq.com/q/d/l/?s={sym}&i=d", parse_dates=["Date"], index_col="Date")
+        st = st.rename(columns=str.title)[["Open", "High", "Low", "Close"]].dropna()
+    except Exception as err:
+        print(f"    {ticker}: запасной источник недоступен ({err})")
+        return df
+    common = df.index.intersection(st.index)
+    if len(common) == 0 or abs(st.loc[common[-1], "Close"] / df.loc[common[-1], "Close"] - 1) > 0.03:
+        print(f"    {ticker}: Stooq не совпадает по масштабу цены — не используем")
+        return df
+    today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
+    extra = st[(st.index > df.index[-1]) & (st.index < today)]
+    if len(extra):
+        print(f"    {ticker}: Yahoo отстаёт, добавлено со Stooq {len(extra)} бар(ов) по {extra.index[-1].date()}")
+        df = pd.concat([df, extra])
+    return df
 
 
 def currency_of(ticker):
