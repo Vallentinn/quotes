@@ -60,6 +60,42 @@ def to_easylanguage_date(ts):
     return (ts.year - 1900) * 10000 + ts.month * 100 + ts.day
 
 
+def exchange_closed(ticker, now):
+    """Закрылась ли сегодня биржа тикера (время UTC с запасом, летом и зимой)"""
+    minutes = now.hour * 60 + now.minute
+    if ticker.endswith("=X"):                                   # валюты торгуются круглосуточно
+        return False
+    if ticker == "^N225":                                       # Токио закрывается около 06:30 UTC
+        return minutes >= 7 * 60
+    if ticker == "^GDAXI" or ticker.endswith((".DE", ".F", ".AS", ".PA", ".L")):
+        return minutes >= 17 * 60 + 45                          # Xetra и Лондон — до 16:30 UTC
+    return minutes >= 21 * 60 + 30                              # США — до 21:00 UTC
+
+
+def merge_with_existing(name, used, df):
+    """Не теряем бары, которых Yahoo временно не отдаёт: старые строки файла сохраняются,
+    новые данные заменяют их на совпадающих датах. Если сменился тикер (другой листинг,
+    другая валюта), файл перезаписывается целиком."""
+    path = OUT_DIR / f"{name}.csv"
+    meta = OUT_DIR / "_meta.csv"
+    if not path.exists():
+        return df
+    if meta.exists():
+        prev = pd.read_csv(meta).set_index("name")["ticker"]
+        if name in prev and prev[name] != used:
+            print(f"    {name}: тикер сменился ({prev[name]} -> {used}), файл перезаписан")
+            return df
+    old = pd.read_csv(path, header=None, names=["d", "t", "Open", "High", "Low", "Close"])
+    d = old["d"]
+    old.index = pd.to_datetime(dict(year=d // 10000 + 1900, month=d // 100 % 100, day=d % 100))
+    old = old[["Open", "High", "Low", "Close"]]
+    kept = old[~old.index.isin(df.index) & (old.index > df.index[0])]
+    if len(kept):
+        print(f"    {name}: сохранено {len(kept)} бар(ов), которых нет в ответе Yahoo: "
+              f"{', '.join(str(x.date()) for x in kept.index[-3:])}")
+    return pd.concat([df, kept]).sort_index()
+
+
 def fetch(tickers):
     """Пробует тикеры по очереди, возвращает первый непустой результат"""
     for ticker in tickers:
@@ -74,10 +110,11 @@ def fetch(tickers):
         if isinstance(df.columns, pd.MultiIndex):     # новые версии yfinance
             df.columns = df.columns.get_level_values(0)
         df = df[["Open", "High", "Low", "Close"]].dropna()
-        # только закрытые сессии: сегодняшний бар ещё формируется (запуск может
-        # сработать днём, пока биржи открыты), поэтому отбрасываем его
-        today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
-        df = df[df.index < today]
+        # только закрытые сессии: сегодняшний бар оставляем, лишь если биржа уже закрылась
+        now = pd.Timestamp.now(tz="UTC")
+        today = now.normalize().tz_localize(None)
+        if not exchange_closed(ticker, now):
+            df = df[df.index < today]
         if len(df) < 30:
             print(f"    {ticker}: слишком мало баров ({len(df)})")
             continue
@@ -106,6 +143,7 @@ def save(name, tickers, with_currency=False):
         return False
     if with_currency:
         META.append((name, used, currency_of(used)))
+    df = merge_with_existing(name, used, df)
 
     flat = int((df["High"] == df["Low"]).sum())
     broken = int(((df["High"] < df[["Open", "Close"]].max(axis=1)) |
