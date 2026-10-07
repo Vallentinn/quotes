@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write          # нужно, чтобы создавать Issue с отчётом проверки
 
 jobs:
   update:
@@ -25,6 +26,11 @@ jobs:
 
       - name: Скачать котировки
         run: python download_quotes.py
+
+      - name: Проверить качество котировок
+        id: check
+        run: python check_quotes.py
+        continue-on-error: true   # при проблемах не останавливаемся: данные коммитим, а сигналим через Issue
 
       - name: Закоммитить изменения
         run: |
@@ -45,3 +51,18 @@ jobs:
           gh api repos/Vallentinn/portfolio/dispatches \
             --field event_type=quotes-updated
         continue-on-error: true   # если токена нет — просто пропускаем
+
+      - name: Сообщить о проблемах в данных
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create data-check --color D93F0B --description "Проверка котировок" --force
+          # если открытый Issue уже есть — дописываем комментарий, а не плодим новые
+          num=$(gh issue list --label data-check --state open --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body-file check_report.md
+          else
+            gh issue create --title "Проверка котировок: $(date -u +%Y-%m-%d)" \
+              --label data-check --body-file check_report.md
+          fi
