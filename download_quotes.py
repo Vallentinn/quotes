@@ -48,6 +48,7 @@ PORTFOLIO = {
 FX = {
     "FX_USD": ["EURUSD=X"],
     "FX_GBP": ["EURGBP=X"],
+    "FX_JPY": ["EURJPY=X"],     # для пересчёта N225 в бэктесте
 }
 
 START = "1990-01-01"
