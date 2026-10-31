@@ -19,7 +19,6 @@ import yfinance as yf
 HISTORY = {
     "SPY":  ["SPY"],
     "QQQ":  ["QQQ"],
-    "DIA":  ["DIA"],
     "IWM":  ["IWM"],
     "DAX":  ["^GDAXI"],
     "N225": ["^N225"],
@@ -50,6 +49,10 @@ FX = {
     "FX_GBP": ["EURGBP=X"],
     "FX_JPY": ["EURJPY=X"],     # для пересчёта N225 в бэктесте
 }
+
+# ставка ЕЦБ по депозитам (Deposit Facility Rate), % годовых — для дохода на свободные деньги
+ECB_RATE_URL = ("https://data-api.ecb.europa.eu/service/data/"
+                "FM/D.U2.EUR.4F.KR.DFR.LEV?format=csvdata")
 
 START = "1990-01-01"
 OUT_DIR = Path(__file__).parent / "quotes"
@@ -164,6 +167,24 @@ def save(name, tickers, with_currency=False):
     return True
 
 
+def save_ecb_rate():
+    """Ставка ЕЦБ по депозитам -> quotes/_rate_eur.csv (date,rate в % годовых).
+    Имя с «_» — чтобы check_quotes.py не проверял файл как котировки.
+    Если ЕЦБ не ответил, старый файл остаётся как есть."""
+    try:
+        df = pd.read_csv(ECB_RATE_URL)
+        out = df[["TIME_PERIOD", "OBS_VALUE"]].dropna()
+        out.columns = ["date", "rate"]
+        out = out.sort_values("date")
+        out.to_csv(OUT_DIR / "_rate_eur.csv", index=False)
+        print(f"ECB    DFR        {out['date'].iloc[0]} — {out['date'].iloc[-1]}  "
+              f"последняя ставка {out['rate'].iloc[-1]:.2f}%")
+        return True
+    except Exception as err:
+        print(f"ECB    ставка НЕ СКАЧАНА ({err}) — остаётся прежний файл")
+        return False
+
+
 def main():
     failed = []
     for title, group in [("ИСТОРИЯ (US ETF)", HISTORY), ("ПОРТФЕЛЬ (UCITS)", PORTFOLIO)]:
@@ -175,6 +196,9 @@ def main():
     for name, tickers in FX.items():
         if not save(name, tickers):
             failed.append(name)
+    print("\n=== СТАВКА ЕЦБ ===")
+    if not save_ecb_rate():
+        failed.append("ECB")
     pd.DataFrame(META, columns=["name", "ticker", "currency"]).to_csv(OUT_DIR / "_meta.csv", index=False)
     print("\nВалюты листингов:", ", ".join(f"{n}={c}" for n, _, c in META))
     print("\nГотово. Файлы в", OUT_DIR.resolve())
