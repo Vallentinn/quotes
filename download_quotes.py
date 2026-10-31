@@ -43,6 +43,11 @@ PORTFOLIO = {
     "XUTD": ["XUTD.DE", "XUTD.L"],             # LU0429459356  US Treasuries широкие
 }
 
+# кандидат в «ядро» портфеля (просто держать): MSCI World, накопительный, в EUR
+CORE = {
+    "WORLD": ["EUNL.DE", "IWDA.AS"],            # IE00B4L5Y983  iShares Core MSCI World
+}
+
 # курсы для пересчёта стоимости позиций в евро (сколько валюты за 1 EUR)
 FX = {
     "FX_USD": ["EURUSD=X"],
@@ -113,7 +118,12 @@ def fetch(tickers):
             continue
         if isinstance(df.columns, pd.MultiIndex):     # новые версии yfinance
             df.columns = df.columns.get_level_values(0)
-        df = df[["Open", "High", "Low", "Close"]].dropna()
+        df = df[["Open", "High", "Low", "Close", "Adj Close"]].dropna()
+        # Полная доходность: Yahoo в Close не учитывает дивиденды и купоны (только сплиты),
+        # Adj Close учитывает. Пересчитываем все цены бара на коэффициент Adj Close / Close,
+        # последний бар при этом не меняется (корректировка идёт назад по истории).
+        k = df["Adj Close"] / df["Close"]
+        df = df[["Open", "High", "Low", "Close"]].mul(k, axis=0)
         # только закрытые сессии: сегодняшний бар оставляем, лишь если биржа уже закрылась
         now = pd.Timestamp.now(tz="UTC")
         today = now.normalize().tz_localize(None)
@@ -187,7 +197,8 @@ def save_ecb_rate():
 
 def main():
     failed = []
-    for title, group in [("ИСТОРИЯ (US ETF)", HISTORY), ("ПОРТФЕЛЬ (UCITS)", PORTFOLIO)]:
+    for title, group in [("ИСТОРИЯ (US ETF)", HISTORY), ("ПОРТФЕЛЬ (UCITS)", PORTFOLIO),
+                         ("ЯДРО", CORE)]:
         print(f"\n=== {title} ===")
         for name, tickers in group.items():
             if not save(name, tickers, with_currency=(group is PORTFOLIO)):
