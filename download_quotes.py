@@ -123,7 +123,9 @@ def fetch(tickers):
         # Adj Close учитывает. Пересчитываем все цены бара на коэффициент Adj Close / Close,
         # последний бар при этом не меняется (корректировка идёт назад по истории).
         k = df["Adj Close"] / df["Close"]
+        raw = df["Close"].copy()                    # фактическая цена — для оценки счёта
         df = df[["Open", "High", "Low", "Close"]].mul(k, axis=0)
+        df["Raw"] = raw
         # только закрытые сессии: сегодняшний бар оставляем, лишь если биржа уже закрылась
         now = pd.Timestamp.now(tz="UTC")
         today = now.normalize().tz_localize(None)
@@ -150,7 +152,10 @@ def currency_of(ticker):
 META = []            # имя файла, использованный тикер, валюта
 
 
-def save(name, tickers, with_currency=False):
+def save(name, tickers, with_currency=False, raw=False):
+    """raw=True — дополнительно сохранить фактические (нескорректированные) цены закрытия
+    в quotes/_raw_<name>.csv: по ним считается стоимость счёта и качество исполнения.
+    Скорректированные цены (с дивидендами) нужны для сигналов и бэктеста."""
     df, used = fetch(tickers)
     if df is None:
         print(f"{name:6s} НЕ СКАЧАН — проверь тикеры {tickers}")
@@ -172,6 +177,10 @@ def save(name, tickers, with_currency=False):
         "close": df["Close"].round(4),
     })
     out.to_csv(OUT_DIR / f"{name}.csv", header=False, index=False)
+    if raw and "Raw" in df:
+        r = df["Raw"].dropna()
+        pd.DataFrame({"date": r.index.strftime("%Y-%m-%d"), "close": r.round(4).values}) \
+            .to_csv(OUT_DIR / f"_raw_{name}.csv", index=False)
     print(f"{name:6s} {used:10s} {df.index[0].date()} — {df.index[-1].date()}  "
           f"{len(df):6d} баров | High=Low: {flat} | ошибки OHLC: {broken}")
     return True
@@ -201,7 +210,8 @@ def main():
                          ("ЯДРО", CORE)]:
         print(f"\n=== {title} ===")
         for name, tickers in group.items():
-            if not save(name, tickers, with_currency=(group is PORTFOLIO)):
+            if not save(name, tickers, with_currency=(group is PORTFOLIO),
+                        raw=(group is not HISTORY)):
                 failed.append(name)
     print("\n=== КУРСЫ ВАЛЮТ ===")
     for name, tickers in FX.items():
