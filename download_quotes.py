@@ -102,6 +102,10 @@ def merge_with_existing(name, used, df):
     if len(kept):
         print(f"    {name}: сохранено {len(kept)} бар(ов), которых нет в ответе Yahoo: "
               f"{', '.join(str(x.date()) for x in kept.index[-3:])}")
+        raw_path = OUT_DIR / f"_raw_{name}.csv"          # фактические цены сохранённых баров
+        if "Raw" in df and raw_path.exists():
+            r = pd.read_csv(raw_path, parse_dates=["date"]).set_index("date")["close"]
+            kept = kept.assign(Raw=r.reindex(kept.index))
     return pd.concat([df, kept]).sort_index()
 
 
