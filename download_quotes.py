@@ -43,6 +43,11 @@ PORTFOLIO = {
     "XUTD": ["XUTD.DE", "XUTD.L"],             # LU0429459356  US Treasuries широкие
 }
 
+# фактические цены без поправки на дивиденды — как в MultiCharts (для сигнала SineTrend)
+RAW_OHLC = {
+    "SPY_MC": ["SPY"],
+}
+
 # кандидат в «ядро» портфеля (просто держать): MSCI World, накопительный, в EUR
 CORE = {
     "WORLD": ["EUNL.DE", "IWDA.AS"],            # IE00B4L5Y983  iShares Core MSCI World
@@ -109,7 +114,7 @@ def merge_with_existing(name, used, df):
     return pd.concat([df, kept]).sort_index()
 
 
-def fetch(tickers):
+def fetch(tickers, adjust=True):
     """Пробует тикеры по очереди, возвращает первый непустой результат"""
     for ticker in tickers:
         try:
@@ -126,7 +131,7 @@ def fetch(tickers):
         # Полная доходность: Yahoo в Close не учитывает дивиденды и купоны (только сплиты),
         # Adj Close учитывает. Пересчитываем все цены бара на коэффициент Adj Close / Close,
         # последний бар при этом не меняется (корректировка идёт назад по истории).
-        k = df["Adj Close"] / df["Close"]
+        k = df["Adj Close"] / df["Close"] if adjust else 1.0
         raw = df["Close"].copy()                    # фактическая цена — для оценки счёта
         df = df[["Open", "High", "Low", "Close"]].mul(k, axis=0)
         df["Raw"] = raw
@@ -156,11 +161,11 @@ def currency_of(ticker):
 META = []            # имя файла, использованный тикер, валюта
 
 
-def save(name, tickers, with_currency=False, raw=False):
+def save(name, tickers, with_currency=False, raw=False, adjust=True):
     """raw=True — дополнительно сохранить фактические (нескорректированные) цены закрытия
     в quotes/_raw_<name>.csv: по ним считается стоимость счёта и качество исполнения.
     Скорректированные цены (с дивидендами) нужны для сигналов и бэктеста."""
-    df, used = fetch(tickers)
+    df, used = fetch(tickers, adjust)
     if df is None:
         print(f"{name:6s} НЕ СКАЧАН — проверь тикеры {tickers}")
         return False
@@ -217,6 +222,10 @@ def main():
             if not save(name, tickers, with_currency=(group is PORTFOLIO),
                         raw=(group is not HISTORY)):
                 failed.append(name)
+    print("\n=== БЕЗ ПОПРАВКИ НА ДИВИДЕНДЫ (MultiCharts) ===")
+    for name, tickers in RAW_OHLC.items():
+        if not save(name, tickers, adjust=False):
+            failed.append(name)
     print("\n=== КУРСЫ ВАЛЮТ ===")
     for name, tickers in FX.items():
         if not save(name, tickers):
